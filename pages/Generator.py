@@ -1,50 +1,30 @@
 import streamlit as st
 import requests
+from PIL import Image
 
-# Set page title inside the sidebar page
-st.title("🎨 Unrestricted AI Image Generator")
-st.write("Enter your vision below to generate uncensored imagery.")
+st.title("🎬 Image-to-Video Studio")
+st.write("Upload a photo and add a prompt to bring it to life.")
 
-# Sidebar status
-st.sidebar.info("Connected to Unrestricted Backend")
+# 1. The Spot to Upload Photos
+uploaded_file = st.file_uploader("Choose a photo...", type=["jpg", "png", "jpeg"])
 
-# User Input
-prompt = st.text_input("Describe the image you want to create:", placeholder="e.g., A dystopian cyberpunk neon city...")
+if uploaded_file is not None:
+    # Display the uploaded image
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
+    
+    # 2. Text input for the prompt
+    prompt = st.text_input("How should this photo move?", placeholder="e.g., The trees sway in the wind, cinematic lighting...")
 
-# Configuration Sidebar
-st.sidebar.header("Settings")
-aspect_ratio = st.sidebar.selectbox("Aspect Ratio", ["1:1", "16:9", "9:16"])
-guidance_scale = st.sidebar.slider("Creativity (Guidance Scale)", 1, 20, 7)
-
-# Generate Button
-if st.button("Generate Now"):
-    if not prompt:
-        st.error("Please enter a prompt first!")
-    else:
-        with st.spinner("Channeling AI grit... please wait."):
-            try:
-                # --- THIS IS WHERE YOU PLUG IN YOUR CHOSEN API ---
-                # Example for a generic unrestricted API endpoint
-                api_url = "https://api.example-unrestricted-ai.com/v1/generate"
+    if st.button("Animate Video"):
+        if not prompt:
+            st.error("Please describe the motion!")
+        else:
+            with st.spinner("Analyzing pixels... rendering motion..."):
+                # Bridge to a service like Replicate or OpenRouter
+                # (You would use your st.secrets["AI_API_KEY"] here)
                 
-                # Replace 'your_api_key' with the secret you set in Streamlit Advanced Settings
-                headers = {"Authorization": f"Bearer {st.secrets['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']}"}
-                payload = {
-                    "prompt": prompt,
-                    "aspect_ratio": aspect_ratio,
-                    "guidance_scale": guidance_scale
-                }
-                
-                # Uncomment the lines below once you have your real API URL
-                # response = requests.post(api_url, json=payload, headers=headers)
-                # if response.status_code == 200:
-                #    st.image(response.json()['image_url'], caption="Generated Image")
-                # else:
-                #    st.error("API connection failed. Check your API Key.")
-                
-                # For now, this is a placeholder to show it works:
-                st.info(f"Connecting to API with prompt: '{prompt}'...")
-                st.warning("Action needed: Replace the dummy API URL in the code with your real one!")
-
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                st.info(f"Connecting to API to animate with prompt: '{prompt}'")
+                st.warning("Action needed: Link this to an Image-to-Video model (like Stable Video Diffusion) to get a real result!")
+else:
+    st.info("Please upload an image to begin.")
