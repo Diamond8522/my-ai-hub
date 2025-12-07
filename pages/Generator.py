@@ -1,87 +1,74 @@
 import streamlit as st
 import requests
 import base64
-import os
 import time
 import io
 from PIL import Image
 
-# 1. Dashboard UI setup
-st.set_page_config(page_title="Motion Studio", layout="wide")
+st.set_page_config(page_title="Grit Motion Studio", layout="wide")
 st.title("🎬 Uncensored Motion Studio")
-st.write("Turn your static images into unrestricted cinematic video.")
 
-# 2. File Uploader Spot
-uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
+# Secret key validation
+if 'AI_API_KEY' not in st.secrets:
+    st.error("Missing API Key! Add 'AI_API_KEY' to your Streamlit Secrets.")
+    st.stop()
+
+# Step 1: User Uploads the "Spot" image
+uploaded_file = st.file_uploader("Upload Image to Animate", type=["jpg", "png", "jpeg"])
 
 if uploaded_file:
-    # Display preview
     img = Image.open(uploaded_file)
-    st.image(img, caption="Static Source", width=400)
+    st.image(img, caption="Static Reference", width=300)
     
-    # Motion Prompt
-    prompt = st.text_area("Describe how this photo moves:", 
-                          placeholder="e.g., slow motion zoom, cinematic lighting flicker...")
+    # Step 2: Prompt for motion
+    motion_prompt = st.text_area("Describe the physics of motion:", 
+                                placeholder="e.g., Wind swaying the hair cinematically, lightning flickering...")
 
     if st.button("Generate Unrestricted Video"):
-        if not prompt:
-            st.error("Please provide a motion description.")
-        else:
-            with st.spinner("Bypassing filters... animating pixels..."):
-                try:
-                    # ACCESS KEY: Ensure 'AI_API_KEY' is in your Streamlit Secrets!
-                    api_key = st.secrets["AI_API_KEY"]
-                    
-                    # NOVITA API ENDPOINT (Wan 2.1 Image-to-Video)
-                    # This model allows the unmoderated 'enable_safety_checker=False' flag
-                    api_url = "https://api.novita.ai/v3/async/wan-i2v"
-                    
-                    # Convert image to Base64 (Standard for AI data transfer)
-                    buffered = io.BytesIO()
-                    img.save(buffered, format="JPEG")
-                    img_b64 = base64.b64encode(buffered.getvalue()).decode()
+        with st.spinner("Pushing to Kie.ai engine... bypassing filters..."):
+            try:
+                # Convert Image to Base64 (Kie needs raw data for image-to-video)
+                buffered = io.BytesIO()
+                img.save(buffered, format="JPEG")
+                img_b64 = base64.b64encode(buffered.getvalue()).decode()
 
-                    headers = {
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    }
-                    
-                    payload = {
-                        "prompt": prompt,
-                        "image_url": f"data:image/jpeg;base64,{img_b64}",
-                        "enable_safety_checker": False # THE GRIT SWITCH: UNRESTRICTED
-                    }
+                # Step 3: Trigger the Task (Runway Gen-3 Alpha model on Kie)
+                api_key = st.secrets["AI_API_KEY"]
+                api_url = "https://api.kie.ai/api/v1/runway/generate"
+                
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
 
-                    # Step 1: Submit Task
-                    response = requests.post(api_url, json=payload, headers=headers)
-                    task_data = response.json()
+                payload = {
+                    "prompt": motion_prompt,
+                    "imageUrl": f"data:image/jpeg;base64,{img_b64}",
+                    "model": "runway-gen3-alpha-turbo", # High speed & cinematic
+                    "duration": 5, # 5s is best for trial credits
+                    "aspectRatio": "16:9"
+                }
+
+                # Submit task
+                submit_res = requests.post(api_url, json=payload, headers=headers).json()
+                
+                if submit_res.get("code") == 200:
+                    task_id = submit_res["data"]["taskId"]
+                    st.info(f"Task Submitted: {task_id}. Polling for results...")
                     
-                    if "task_id" in task_data:
-                        task_id = task_data["task_id"]
+                    # Step 4: Polling for Status
+                    status_url = f"https://api.kie.ai/api/v1/runway/record-info?taskId={task_id}"
+                    
+                    for _ in range(20): # Check for 100 seconds
+                        time.sleep(5)
+                        status_res = requests.get(status_url, headers=headers).json()
                         
-                        # Step 2: Poll for results (Simplified)
-                        # In production, use a loop to check status. Here we wait once for demo.
-                        time.sleep(10) 
-                        result_url = f"https://api.novita.ai/v3/async/task-result?task_id={task_id}"
-                        res = requests.get(result_url, headers=headers).json()
-                        
-                        if res['task']['status'] == "TASK_STATUS_SUCCEED":
-                            video_url = res['videos'][0]['video_url']
-                            
-                            # SHOW VIDEO
-                            st.video(video_url)
-                            
-                            # SAVE TO GALLERY FOLDER
-                            if not os.path.exists("gallery"): os.makedirs("gallery")
-                            v_data = requests.get(video_url).content
-                            f_path = f"gallery/video_{int(time.time())}.mp4"
-                            with open(f_path, "wb") as f:
-                                f.write(v_data)
-                            st.success(f"Video saved to hub: {f_path}")
-                        else:
-                            st.warning("Video is still cooking in the oven... check back in a minute!")
-                    else:
-                        st.error(f"API Error: {task_data}")
-
-                except Exception as e:
-                    st.error(f"Scary glitch detected: {e}")
+                        if status_res["data"]["successFlag"] == 1: # SUCCESS
+                            video_urls = status_res["data"]["resultUrls"] # JSON string from API
+                            final_url = eval(video_urls)[0] # Get the first link
+                            st.video(final_url)
+                            st.success("Generation Complete! Your video is live.")
+                            break
+                        elif status_res["data"]["successFlag"] >= 2: # FAIL
+                            st.error(f"Generation Failed: {status_res['msg']}")
+                            break
