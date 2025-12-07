@@ -3,72 +3,77 @@ import requests
 import base64
 import time
 import io
+import os
 from PIL import Image
 
 st.set_page_config(page_title="Grit Motion Studio", layout="wide")
 st.title("🎬 Uncensored Motion Studio")
 
-# Secret key validation
+# 1. API Secret Verification
 if 'AI_API_KEY' not in st.secrets:
-    st.error("Missing API Key! Add 'AI_API_KEY' to your Streamlit Secrets.")
+    st.error("Grit needed: Add 'AI_API_KEY' to your Streamlit Secrets first!")
     st.stop()
 
-# Step 1: User Uploads the "Spot" image
+# 2. Setup Gallery Folder
+if not os.path.exists("gallery"):
+    os.makedirs("gallery")
+
+# 3. User Upload Spot
 uploaded_file = st.file_uploader("Upload Image to Animate", type=["jpg", "png", "jpeg"])
 
 if uploaded_file:
+    # Preview input image
     img = Image.open(uploaded_file)
-    st.image(img, caption="Static Reference", width=300)
+    st.image(img, caption="Static Source", width=300)
     
-    # Step 2: Prompt for motion
-    motion_prompt = st.text_area("Describe the physics of motion:", 
-                                placeholder="e.g., Wind swaying the hair cinematically, lightning flickering...")
+    # 4. Motion Description
+    motion_prompt = st.text_area("Describe the motion physics:", 
+                                placeholder="e.g., Kinetic hair movement, slow camera zoom in, cinematic flickers...")
 
     if st.button("Generate Unrestricted Video"):
-        with st.spinner("Pushing to Kie.ai engine... bypassing filters..."):
+        with st.spinner("Bypassing filters... rendering motion..."):
             try:
-                # Convert Image to Base64 (Kie needs raw data for image-to-video)
+                # Setup Auth
+                api_key = st.secrets["AI_API_KEY"]
+                api_url = "https://api.kie.ai/api/v1/runway/generate"
+                
+                # Convert PIL Image to Base64
                 buffered = io.BytesIO()
                 img.save(buffered, format="JPEG")
                 img_b64 = base64.b64encode(buffered.getvalue()).decode()
 
-                # Step 3: Trigger the Task (Runway Gen-3 Alpha model on Kie)
-                api_key = st.secrets["AI_API_KEY"]
-                api_url = "https://api.kie.ai/api/v1/runway/generate"
-                
                 headers = {
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json"
                 }
 
+                # Payload: enableTranslation allows for multilingual prompts if needed
                 payload = {
                     "prompt": motion_prompt,
                     "imageUrl": f"data:image/jpeg;base64,{img_b64}",
-                    "model": "runway-gen3-alpha-turbo", # High speed & cinematic
-                    "duration": 5, # 5s is best for trial credits
+                    "model": "runway-gen3-alpha-turbo",
+                    "duration": 5,
                     "aspectRatio": "16:9"
                 }
 
-                # Submit task
+                # Submit the Generation Task
                 submit_res = requests.post(api_url, json=payload, headers=headers).json()
                 
                 if submit_res.get("code") == 200:
                     task_id = submit_res["data"]["taskId"]
-                    st.info(f"Task Submitted: {task_id}. Polling for results...")
+                    st.info(f"Task Submitted: {task_id}. Animating pixels...")
                     
-                    # Step 4: Polling for Status
+                    # 5. Polling for Result
                     status_url = f"https://api.kie.ai/api/v1/runway/record-info?taskId={task_id}"
                     
-                    for _ in range(20): # Check for 100 seconds
+                    for i in range(25): # Loop for ~125 seconds
                         time.sleep(5)
-                        status_res = requests.get(status_url, headers=headers).json()
+                        res = requests.get(status_url, headers=headers).json()
                         
-                        if status_res["data"]["successFlag"] == 1: # SUCCESS
-                            video_urls = status_res["data"]["resultUrls"] # JSON string from API
-                            final_url = eval(video_urls)[0] # Get the first link
-                            st.video(final_url)
-                            st.success("Generation Complete! Your video is live.")
-                            break
-                        elif status_res["data"]["successFlag"] >= 2: # FAIL
-                            st.error(f"Generation Failed: {status_res['msg']}")
-                            break
+                        # successFlag: 0=Generating, 1=Success, 2=Failed
+                        if res["data"]["successFlag"] == 1:
+                            # resultUrls is a JSON string of a list
+                            final_urls = eval(res["data"]["resultUrls"])
+                            video_url = final_urls[0]
+                            
+                            st.
