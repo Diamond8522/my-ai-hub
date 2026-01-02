@@ -2,7 +2,3 @@
 
 AI_API_KEY = "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"
 
-# You can also group them
-[kie_ai]
-api_key = "sk-..."
-base_url = "https://kieai.redpandaai.co"
